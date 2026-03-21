@@ -1,0 +1,175 @@
+---
+name: review-with-multi-debate
+description: Use when an artifact must be audited against a claim by multiple independent reviewers, each review must be saved to `audits/...json`, and disagreement should trigger targeted follow-up rounds until convergence or a hard stop.
+---
+
+# Review With Multi Debate
+
+## Overview
+
+Use this skill when a single review is too brittle and you need a structured multi-review audit instead. The job is not to create theatrical debate. The job is to decompose the claim into auditable criteria, collect independent evidence-bound reviews, and recurse only on disputed points.
+
+## Trigger Conditions
+
+Use this skill when the user asks for any of the following:
+
+- multiple reviewers to assess whether an artifact meets a claim
+- audit files written to `audits/<feature_name>_green_auditN_iterationM.json`
+- iterative debate, recursive review, or disagreement resolution
+- convergence rules for claim checking, requirement audits, or evidence-based review
+
+Do not use this skill for:
+
+- simple summaries
+- one-pass reviews where disagreement handling is unnecessary
+- open-ended brainstorming without a concrete artifact and claim
+
+## Core Rule
+
+Do not ask reviewers to argue about one big fuzzy verdict. First convert the claim into a small set of checkable criteria. Convergence is measured per criterion, then rolled up into an overall status.
+
+If the claim cannot be decomposed into clear criteria, stop and rewrite the claim before launching reviewers.
+
+## Workflow
+
+### 1. Normalize the input
+
+Inputs:
+
+- `artifact`
+- `claim`
+- `feature_name`
+- optional `phase`, default `green`
+
+Write a short claim decomposition before running reviewers:
+
+- 3 to 7 criteria
+- each criterion must be `pass`, `fail`, or `insufficient_evidence`
+- identify which criteria are blocking
+
+If the user did not provide a `feature_name`, derive a short snake_case or kebab-case label from the claim.
+
+### 2. Run round 1 reviewers in parallel
+
+Launch three independent reviewers in parallel. `codex -exec` is a good execution engine here, but the important part is reviewer separation and structured output.
+
+Reviewer roles:
+
+- `audit1`: strict verifier, biased toward rejecting unsupported claims
+- `audit2`: charitable verifier, biased toward accepting only explicit evidence
+- `audit3`: contradiction hunter, focused on disconfirming evidence and scope mismatches
+
+Each reviewer gets:
+
+- the artifact
+- the claim
+- the claim decomposition
+- the required JSON schema from [references/audit_schema.md](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/references/audit_schema.md)
+- the template in [assets/audit_result_template.json](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/assets/audit_result_template.json)
+
+Each reviewer writes exactly one file:
+
+- `audits/<feature_name>_<phase>_audit1_iteration1.json`
+- `audits/<feature_name>_<phase>_audit2_iteration1.json`
+- `audits/<feature_name>_<phase>_audit3_iteration1.json`
+
+Every criterion verdict must cite evidence or explicitly record missing evidence. No unsupported verdicts.
+
+### 3. Aggregate deterministically
+
+After each round, aggregate the reviewer JSON files with:
+
+```bash
+python scripts/aggregate_audits.py audits/<feature_name>_<phase>_audit1_iteration1.json audits/<feature_name>_<phase>_audit2_iteration1.json audits/<feature_name>_<phase>_audit3_iteration1.json --output audits/<feature_name>_<phase>_iteration1_summary.json
+```
+
+The aggregator decides:
+
+- which criteria converged
+- which criteria are disputed
+- whether the round status is `converged` or `not_converged`
+
+Convergence rule:
+
+- all reviewers give the same criterion verdict
+- confidence spread for that criterion is at most `0.2`
+- no new counterevidence remains unanswered
+
+If all blocking criteria converge, the overall result may be treated as converged even if only non-blocking criteria still differ slightly. State that explicitly in the summary.
+
+### 4. Re-audit disputed criteria only
+
+If the summary says `not_converged`, do not re-run the full audit blindly.
+
+Prepare a disagreement packet containing:
+
+- the artifact
+- the claim
+- the original claim decomposition
+- the disputed criteria only
+- all previous audit JSON files
+- the latest summary JSON
+
+Then run a second round of reviewers. Each reviewer must:
+
+- address only disputed criteria
+- say which earlier reviewer points they accept or reject
+- keep unchanged criteria out of scope
+
+Write:
+
+- `audits/<feature_name>_<phase>_audit1_iteration2.json`
+- `audits/<feature_name>_<phase>_audit2_iteration2.json`
+- `audits/<feature_name>_<phase>_audit3_iteration2.json`
+
+Aggregate again.
+
+### 5. Stop conditions
+
+Stop when any of the following is true:
+
+- all blocking criteria converged
+- all criteria converged
+- iteration count reached 3
+
+If iteration 3 still has unresolved blocking disagreement, do not force consensus. Mark the final status `unresolved` and report the exact disputed criteria and evidence conflict.
+
+## Output Contract
+
+For each iteration, produce:
+
+- three reviewer JSON files
+- one summary JSON file
+
+Recommended summary names:
+
+- `audits/<feature_name>_<phase>_iteration1_summary.json`
+- `audits/<feature_name>_<phase>_iteration2_summary.json`
+- `audits/<feature_name>_<phase>_iteration3_summary.json`
+
+The final user-facing answer should report:
+
+- the final status
+- the blocking criteria
+- the disputed criteria, if any
+- the main evidence that drove the result
+- whether the audit converged or stopped unresolved
+
+## Execution Guidance
+
+Use parallel workers for reviewer generation, but keep the aggregation deterministic. Parallelism makes the first round faster. It does not replace a schema, a stopping rule, or an aggregator.
+
+Avoid these failure modes:
+
+- reviewers all receive the same vague prompt and produce correlated fluff
+- later rounds re-audit everything instead of only disputed criteria
+- convergence is defined as matching overall verdicts instead of criterion-level agreement
+- disagreement is resolved by copying the dominant reviewer instead of addressing evidence
+
+## Resources
+
+Open [references/audit_schema.md](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/references/audit_schema.md) when you need the exact JSON fields, reviewer obligations, and convergence details.
+
+Use [assets/audit_result_template.json](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/assets/audit_result_template.json) as the starting shape for reviewer outputs.
+
+Use [scripts/aggregate_audits.py](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/scripts/aggregate_audits.py) after each round to compute disputes and convergence mechanically.
