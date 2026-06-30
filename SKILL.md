@@ -14,7 +14,7 @@ Use this skill when a single review is too brittle and you need a structured mul
 Use this skill when the user asks for any of the following:
 
 - multiple reviewers to assess whether an artifact meets a claim
-- audit files written to `audits/<feature_name>_green_auditN_iterationM.json`
+- audit files written to `audits/<feature_name>_<phase>_auditN_iterationM.json`
 - iterative debate, recursive review, or disagreement resolution
 - convergence rules for claim checking, requirement audits, or evidence-based review
 
@@ -44,14 +44,14 @@ Inputs:
 Write a short claim decomposition before running reviewers:
 
 - 3 to 7 criteria
-- each criterion must be `pass`, `fail`, or `insufficient_evidence`
+- each criterion must be checkable with a `pass`, `fail`, or `insufficient_evidence` verdict
 - identify which criteria are blocking
 
 If the user did not provide a `feature_name`, derive a short snake_case or kebab-case label from the claim.
 
 ### 2. Run round 1 reviewers in parallel
 
-Launch three independent reviewers in parallel. `codex -exec` is a good execution engine here, but the important part is reviewer separation and structured output.
+Launch three independent reviewers in parallel. The important part is reviewer separation and structured output.
 
 Reviewer roles:
 
@@ -64,8 +64,7 @@ Each reviewer gets:
 - the artifact
 - the claim
 - the claim decomposition
-- the required JSON schema from [references/audit_schema.md](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/references/audit_schema.md)
-- the template in [assets/audit_result_template.json](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/assets/audit_result_template.json)
+- the reviewer JSON contract below
 
 Each reviewer writes exactly one file:
 
@@ -75,31 +74,67 @@ Each reviewer writes exactly one file:
 
 Every criterion verdict must cite evidence or explicitly record missing evidence. No unsupported verdicts.
 
-### 3. Aggregate deterministically
+Reviewer JSON contract:
 
-After each round, aggregate the reviewer JSON files with:
-
-```bash
-python scripts/aggregate_audits.py audits/<feature_name>_<phase>_audit1_iteration1.json audits/<feature_name>_<phase>_audit2_iteration1.json audits/<feature_name>_<phase>_audit3_iteration1.json --output audits/<feature_name>_<phase>_iteration1_summary.json
+```json
+{
+  "feature_name": "replace-me",
+  "phase": "green",
+  "iteration": 1,
+  "reviewer_id": "audit1",
+  "claim": "Replace with the claim under review.",
+  "overall_verdict": "insufficient_evidence",
+  "overall_confidence": 0.0,
+  "criteria": [
+    {
+      "id": "c1",
+      "text": "Replace with a checkable criterion.",
+      "blocking": true,
+      "verdict": "insufficient_evidence",
+      "confidence": 0.0,
+      "evidence": [],
+      "reasoning": "Short evidence-bound reasoning.",
+      "counterevidence": []
+    }
+  ],
+  "open_questions": [],
+  "disputed_points_if_any": []
+}
 ```
 
-The aggregator decides:
+Rules:
+
+- allowed verdicts are `pass`, `fail`, and `insufficient_evidence`
+- `id` must stay stable across rounds
+- `evidence` may be empty only when the verdict is `insufficient_evidence`
+- `counterevidence` is required when the reviewer sees a real contradiction
+
+### 3. Aggregate deterministically
+
+After each round, aggregate the reviewer JSON files with the skill's aggregator script. When working from another repository, resolve the script from the skill directory instead of assuming the repository has its own `scripts/` folder:
+
+```bash
+python <skill_dir>/scripts/aggregate_audits.py audits/<feature_name>_<phase>_audit1_iteration1.json audits/<feature_name>_<phase>_audit2_iteration1.json audits/<feature_name>_<phase>_audit3_iteration1.json --output audits/<feature_name>_<phase>_iteration1_summary.json
+```
+
+The aggregator mechanically reports:
 
 - which criteria converged
 - which criteria are disputed
 - whether the round status is `converged` or `not_converged`
 
-Convergence rule:
+Mechanical convergence rule:
 
 - all reviewers give the same criterion verdict
 - confidence spread for that criterion is at most `0.2`
-- no new counterevidence remains unanswered
 
-If all blocking criteria converge, the overall result may be treated as converged even if only non-blocking criteria still differ slightly. State that explicitly in the summary.
+Full convergence also requires that no new counterevidence remains unanswered. The aggregator does not judge evidence quality or blocking status; the main agent must check those from the reviewer JSON files before declaring the audit converged.
+
+If all blocking criteria fully converge, the final result may be treated as converged even if only non-blocking criteria still differ slightly. State that explicitly in the final answer.
 
 ### 4. Re-audit disputed criteria only
 
-If the summary says `not_converged`, do not re-run the full audit blindly.
+If any blocking criterion is not fully converged, do not re-run the full audit blindly.
 
 Prepare a disagreement packet containing:
 
@@ -168,8 +203,4 @@ Avoid these failure modes:
 
 ## Resources
 
-Open [references/audit_schema.md](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/references/audit_schema.md) when you need the exact JSON fields, reviewer obligations, and convergence details.
-
-Use [assets/audit_result_template.json](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/assets/audit_result_template.json) as the starting shape for reviewer outputs.
-
-Use [scripts/aggregate_audits.py](/Users/admin/Documents/GitHub.nosynchr/test_A2UI/review-with-multi-debate/scripts/aggregate_audits.py) after each round to compute disputes and convergence mechanically.
+Use [scripts/aggregate_audits.py](scripts/aggregate_audits.py) after each round to compute verdict and confidence alignment mechanically.
