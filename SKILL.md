@@ -49,7 +49,19 @@ Write a short claim decomposition before running reviewers:
 
 If the user did not provide a `feature_name`, derive a short snake_case or kebab-case label from the claim.
 
-### 2. Run round 1 reviewers in parallel
+### 2. Keep audit artifacts out of Git
+
+Before writing audit files in a Git repository:
+
+- resolve the repository-local exclude file with `git rev-parse --git-path info/exclude`
+- add `/audits/` to that exclude file if the exact rule is absent
+- preserve all existing exclude rules
+- verify a planned audit path is ignored with `git check-ignore`
+- if any audit file is already tracked, stop and report it; do not alter the Git index without user approval
+
+Skip this step when the artifact is outside a Git repository.
+
+### 3. Run round 1 reviewers in parallel
 
 Launch three independent reviewers in parallel. The important part is reviewer separation and structured output.
 
@@ -109,7 +121,7 @@ Rules:
 - `evidence` may be empty only when the verdict is `insufficient_evidence`
 - `counterevidence` is required when the reviewer sees a real contradiction
 
-### 3. Aggregate deterministically
+### 4. Aggregate deterministically
 
 After each round, aggregate the reviewer JSON files with the skill's aggregator script. When working from another repository, resolve the script from the skill directory instead of assuming the repository has its own `scripts/` folder:
 
@@ -132,7 +144,7 @@ Full convergence also requires that no new counterevidence remains unanswered. T
 
 If all blocking criteria fully converge, the final result may be treated as converged even if only non-blocking criteria still differ slightly. State that explicitly in the final answer.
 
-### 4. Re-audit disputed criteria only
+### 5. Re-audit disputed criteria only
 
 If any blocking criterion is not fully converged, do not re-run the full audit blindly.
 
@@ -159,7 +171,7 @@ Write:
 
 Aggregate again.
 
-### 5. Stop conditions
+### 6. Stop conditions
 
 Stop when any of the following is true:
 
