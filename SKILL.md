@@ -215,4 +215,6 @@ Avoid these failure modes:
 
 ## Resources
 
-Use [scripts/aggregate_audits.py](scripts/aggregate_audits.py) after each round to compute verdict and confidence alignment mechanically.
+- Load [references/audit_schema.md](references/audit_schema.md) when checking the reviewer schema, roles, convergence rules, or file naming.
+- Copy [assets/audit_result_template.json](assets/audit_result_template.json) as the starting structure for each reviewer result, then replace its placeholders.
+- Run [scripts/aggregate_audits.py](scripts/aggregate_audits.py) after each round to compute verdict and confidence alignment mechanically.
