@@ -51,15 +51,13 @@ If the user did not provide a `feature_name`, derive a short snake_case or kebab
 
 ### 2. Keep audit artifacts out of Git
 
-Before writing audit files in a Git repository:
+Before writing audit files, ensure the project-local exclude file contains `/audits/`, even when Git has not been initialized:
 
-- resolve the repository-local exclude file with `git rev-parse --git-path info/exclude`
-- add `/audits/` to that exclude file if the exact rule is absent
-- preserve all existing exclude rules
-- verify a planned audit path is ignored with `git check-ignore`
-- if any audit file is already tracked, stop and report it; do not alter the Git index without user approval
-
-Skip this step when the artifact is outside a Git repository.
+- if `git rev-parse --git-path info/exclude` succeeds, use its resolved path
+- otherwise, create `.git/info/` if needed and use `.git/info/exclude`; do not run `git init`
+- add `/audits/` only when the exact rule is absent and preserve all existing exclude rules
+- when Git is initialized, verify a planned audit path is ignored with `git check-ignore`
+- when Git is initialized, stop and report any already tracked audit file; do not alter the Git index without user approval
 
 ### 3. Run round 1 reviewers in parallel
 
